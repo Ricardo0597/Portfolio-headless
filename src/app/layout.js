@@ -1,5 +1,6 @@
 import '@/styles/globals.css';
 import Banner from '@/components/Banner';
+import Nav from '@/components/Nav';
 
 export const metadata = {
   title: 'Headless Portfolio',
@@ -12,6 +13,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <Banner />
+        <Nav />
         <main>{children}</main>
       </body>
     </html>

@@ -29,7 +29,7 @@ export default function ConstellationPage() {
   if (!data) return null;
 
   return (
-    <div style={{ height: 'calc(100vh - 40px)', position: 'relative', overflow: 'hidden' }}>
+    <div style={{ height: 'calc(100vh - 72px)', position: 'relative', overflow: 'hidden' }}>
       <Constellation
         nodes={data.nodes}
         edges={data.edges}
