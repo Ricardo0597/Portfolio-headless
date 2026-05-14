@@ -8,28 +8,27 @@ export default function Constellation({ nodes, edges, selectedNode, onNodeClick 
   const simulationRef = useRef(null);
   const nodeSelRef = useRef(null);
   const labelSelRef = useRef(null);
+  const zoomRef = useRef(null);
 
   // Build graph — runs once when data changes.
-  // Note: uses raw `edges` prop (string ids). simEdges has D3-mutated object refs; the highlight effect needs the raw prop.
   useEffect(() => {
     if (!nodes.length || !svgRef.current) return;
 
-    const { width, height } = svgRef.current.getBoundingClientRect();
-    const w = width || window.innerWidth;
-    const h = height || window.innerHeight - 40;
+    const rect = svgRef.current.getBoundingClientRect();
+    const w = rect.width || window.innerWidth;
+    const h = rect.height || window.innerHeight - 40;
 
     const radiusScale = d3.scaleSqrt()
       .domain([0, d3.max(nodes, (d) => d.weight) || 1])
-      .range([5, 22]);
+      .range([6, 28]);
 
     const strokeScale = d3.scaleLinear()
       .domain([1, d3.max(edges, (d) => d.strength) || 1])
-      .range([1, 5]);
+      .range([1, 4]);
 
     const categories = [...new Set(nodes.map((n) => n.category))];
     const colorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(categories);
 
-    // Clone node data so D3 can mutate x/y without affecting React state
     const simNodes = nodes.map((d) => ({ ...d }));
     const nodeById = new Map(simNodes.map((d) => [d.id, d]));
     const simEdges = edges
@@ -40,26 +39,32 @@ export default function Constellation({ nodes, edges, selectedNode, onNodeClick 
     simulationRef.current?.stop();
     svg.selectAll('*').remove();
 
-    // Background click resets selection
     svg.on('click', () => onNodeClick(null));
 
     const zoom = d3.zoom()
-      .scaleExtent([0.2, 6])
+      .scaleExtent([0.15, 8])
       .on('zoom', (event) => g.attr('transform', event.transform));
+    zoomRef.current = zoom;
     svg.call(zoom);
+
+    // SVG filter for node glow
+    const defs = svg.append('defs');
+    const filter = defs.append('filter').attr('id', 'node-glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+    filter.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '3').attr('result', 'blur');
+    const feMerge = filter.append('feMerge');
+    feMerge.append('feMergeNode').attr('in', 'blur');
+    feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
 
     const g = svg.append('g');
 
-    // Edges
     const link = g.append('g')
       .selectAll('line')
       .data(simEdges)
       .join('line')
-      .attr('stroke', '#2a2a2a')
+      .attr('stroke', '#2e2e2e')
       .attr('stroke-width', (d) => strokeScale(d.strength))
-      .attr('stroke-opacity', 0.8);
+      .attr('stroke-opacity', 0.9);
 
-    // Nodes
     const node = g.append('g')
       .selectAll('circle')
       .data(simNodes)
@@ -67,7 +72,9 @@ export default function Constellation({ nodes, edges, selectedNode, onNodeClick 
       .attr('r', (d) => radiusScale(d.weight))
       .attr('fill', (d) => colorScale(d.category))
       .attr('cursor', 'pointer')
-      .attr('stroke', 'none')
+      .attr('stroke', (d) => d3.color(colorScale(d.category)).brighter(0.8))
+      .attr('stroke-width', 1)
+      .attr('filter', 'url(#node-glow)')
       .on('click', (event, d) => {
         event.stopPropagation();
         simulationRef.current?.alphaTarget(0);
@@ -86,15 +93,14 @@ export default function Constellation({ nodes, edges, selectedNode, onNodeClick 
           })
       );
 
-    // Labels for heavier nodes only
     const label = g.append('g')
       .selectAll('text')
-      .data(simNodes.filter((d) => d.weight >= 3))
+      .data(simNodes.filter((d) => d.weight >= 1))
       .join('text')
       .attr('text-anchor', 'middle')
-      .attr('dy', (d) => radiusScale(d.weight) + 11)
-      .attr('fill', '#666')
-      .attr('font-size', '9px')
+      .attr('dy', (d) => radiusScale(d.weight) + 13)
+      .attr('fill', '#aaa')
+      .attr('font-size', '11px')
       .attr('font-family', 'JetBrains Mono, monospace')
       .attr('pointer-events', 'none')
       .text((d) => d.name);
@@ -102,20 +108,42 @@ export default function Constellation({ nodes, edges, selectedNode, onNodeClick 
     nodeSelRef.current = node;
     labelSelRef.current = label;
 
-    simulationRef.current = d3.forceSimulation(simNodes)
-      .force('link', d3.forceLink(simEdges).distance((d) => 60 / d.strength).strength(0.4))
-      .force('charge', d3.forceManyBody().strength(-200))
+    const sim = d3.forceSimulation(simNodes)
+      .force('link', d3.forceLink(simEdges)
+        .distance((d) => Math.max(80, 200 / (d.strength || 1)))
+        .strength(0.4))
+      .force('charge', d3.forceManyBody().strength(-600))
       .force('center', d3.forceCenter(w / 2, h / 2))
-      .force('collide', d3.forceCollide((d) => radiusScale(d.weight) + 4))
+      .force('x', d3.forceX(w / 2).strength(0.04))
+      .force('y', d3.forceY(h / 2).strength(0.04))
+      .force('collide', d3.forceCollide((d) => radiusScale(d.weight) + 5))
       .on('tick', () => {
         link
           .attr('x1', (d) => d.source.x).attr('y1', (d) => d.source.y)
           .attr('x2', (d) => d.target.x).attr('y2', (d) => d.target.y);
         node.attr('cx', (d) => d.x).attr('cy', (d) => d.y);
         label.attr('x', (d) => d.x).attr('y', (d) => d.y);
+      })
+      .on('end', () => {
+        // Zoom to fit all nodes with padding after simulation settles
+        const padding = 60;
+        const bbox = g.node().getBBox();
+        if (!bbox.width || !bbox.height) return;
+        const scale = Math.min(
+          (w - padding * 2) / bbox.width,
+          (h - padding * 2) / bbox.height,
+          1.2
+        );
+        const tx = (w - scale * bbox.width) / 2 - scale * bbox.x;
+        const ty = (h - scale * bbox.height) / 2 - scale * bbox.y;
+        svg.transition().duration(900).call(
+          zoom.transform,
+          d3.zoomIdentity.translate(tx, ty).scale(scale)
+        );
       });
 
-    return () => simulationRef.current?.stop();
+    simulationRef.current = sim;
+    return () => sim.stop();
   }, [nodes, edges]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Highlight/fade when selectedNode changes — no simulation restart
