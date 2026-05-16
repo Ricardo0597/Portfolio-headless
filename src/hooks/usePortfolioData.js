@@ -67,21 +67,7 @@ export function usePortfolioData() {
           stackIds: relIds(node.relationships.field_stack),
         }));
 
-        // Normalise skills
-        const skills = skillJson.data.map((node) => {
-          const catId = relIds(node.relationships.field_category)[0] ?? null;
-          return {
-            id: node.id,
-            title: node.attributes.title,
-            level: node.attributes.field_skill_level ?? 0,
-            path: node.attributes.path?.alias ?? `/node/${node.id}`,
-            categoryName: catId && skillIncluded[catId]
-              ? skillIncluded[catId].attributes.name
-              : 'Other',
-          };
-        });
-
-        // Build tech term name map from project included resources
+        // Build tech term name → id(s) map from project included resources
         const techById = {};
         Object.values(projIncluded).forEach((item) => {
           if (item.type === 'taxonomy_term--technology_stack') {
@@ -89,44 +75,63 @@ export function usePortfolioData() {
           }
         });
 
-        // Index skills by lower-cased title for matching
-        const skillByName = {};
-        skills.forEach((s) => { skillByName[s.title.toLowerCase()] = s; });
-
-        // Build constellation nodes
-        const nodeMap = {};
-        projects.forEach((project) => {
-          project.stackIds.forEach((termId) => {
-            const termName = techById[termId];
-            if (!termName) return;
-            if (!nodeMap[termId]) {
-              const matchedSkill = skillByName[termName.toLowerCase()];
-              nodeMap[termId] = {
-                id: termId,
-                name: termName,
-                projectCount: 0,
-                skillLevel: matchedSkill ? (matchedSkill.level ?? 0) : 0,
-                category: matchedSkill?.categoryName ?? 'Other',
-              };
-            }
-            nodeMap[termId].projectCount++;
-          });
+        // Reverse map: lowercased tech name → [termId, ...]
+        const termIdsByName = {};
+        Object.entries(techById).forEach(([id, name]) => {
+          const key = name.toLowerCase();
+          if (!termIdsByName[key]) termIdsByName[key] = [];
+          termIdsByName[key].push(id);
         });
 
-        const nodes = Object.values(nodeMap).map((n) => ({
-          ...n,
-          weight: n.projectCount * 2 + n.skillLevel,
+        // Normalise skills and attach matching tech term IDs + project count
+        const skills = skillJson.data.map((node) => {
+          const catId = relIds(node.relationships.field_category)[0] ?? null;
+          const categoryName = catId && skillIncluded[catId]
+            ? skillIncluded[catId].attributes.name
+            : 'Other';
+
+          // Tech term IDs whose name matches this skill title (for project lookup)
+          const termIds = termIdsByName[node.attributes.title.toLowerCase()] ?? [];
+
+          const projectCount = projects.filter((p) =>
+            termIds.some((tid) => p.stackIds.includes(tid))
+          ).length;
+
+          return {
+            id: node.id,
+            title: node.attributes.title,
+            level: node.attributes.field_skill_level ?? 0,
+            path: node.attributes.path?.alias ?? `/node/${node.id}`,
+            categoryName,
+            termIds,
+            projectCount,
+          };
+        });
+
+        // Constellation nodes — one per skill, weighted by usage + level
+        const nodes = skills.map((s) => ({
+          id: s.id,
+          name: s.title,
+          category: s.categoryName,
+          skillLevel: s.level,
+          projectCount: s.projectCount,
+          termIds: s.termIds,
+          path: s.path,
+          weight: s.projectCount * 2 + s.level,
         }));
 
-        // Build constellation edges (co-occurrence)
+        // Edges: connect skills that co-occur in the same project
         const edgeMap = {};
         projects.forEach((project) => {
-          const ids = project.stackIds.filter((id) => nodeMap[id]);
-          for (let i = 0; i < ids.length; i++) {
-            for (let j = i + 1; j < ids.length; j++) {
-              const key = [ids[i], ids[j]].sort().join('||');
+          const projectSkillIds = skills
+            .filter((s) => s.termIds.some((tid) => project.stackIds.includes(tid)))
+            .map((s) => s.id);
+
+          for (let i = 0; i < projectSkillIds.length; i++) {
+            for (let j = i + 1; j < projectSkillIds.length; j++) {
+              const key = [projectSkillIds[i], projectSkillIds[j]].sort().join('||');
               if (!edgeMap[key]) {
-                edgeMap[key] = { source: ids[i], target: ids[j], strength: 0 };
+                edgeMap[key] = { source: projectSkillIds[i], target: projectSkillIds[j], strength: 0 };
               }
               edgeMap[key].strength++;
             }
@@ -135,7 +140,7 @@ export function usePortfolioData() {
 
         const edges = Object.values(edgeMap);
 
-        // Build search items
+        // Search items
         const searchItems = [
           ...projects.map((p) => ({
             id: p.id, type: 'project',
