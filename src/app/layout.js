@@ -3,7 +3,7 @@ import Banner from '@/components/Banner';
 import Nav from '@/components/Nav';
 
 export const metadata = {
-  title: 'Headless Portfolio',
+  title: 'Tech Lab | Ricardo Contreras',
   description: 'Next.js headless layer — data served by Drupal JSON:API.',
   colorScheme: 'dark',
 };

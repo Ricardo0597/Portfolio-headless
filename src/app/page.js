@@ -4,7 +4,7 @@ import styles from './page.module.css';
 export default function HeadlessPage() {
   return (
     <div className={styles.container}>
-      <h1 className={styles.title}>Headless Layer</h1>
+      <h1 className={styles.title}>Tech Lab</h1>
       <p className={styles.subtitle}>
         Next.js app served alongside Drupal · data from JSON:API · rendered in your browser.
       </p>
@@ -20,7 +20,7 @@ export default function HeadlessPage() {
           <h2 className={styles.cardTitle}>Ask My Portfolio</h2>
           <p className={styles.cardDesc}>
             Natural language search powered by AI embeddings computed entirely in your browser.
-            No API calls. No server. No cost.
+            Content comes from Drupal&apos;s JSON:API; no external AI service, no cost.
           </p>
         </Link>
       </div>

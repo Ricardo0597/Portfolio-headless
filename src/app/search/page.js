@@ -34,7 +34,7 @@ export default function SearchPage() {
         statusOverride={statusOverride}
       />
       <InfoBadge>
-        Rendering: CSR · Embeddings computed in your browser · No API calls, no server, no cost.
+        Rendering: CSR · Content from Drupal JSON:API · Embeddings computed in your browser · No external AI service, no cost.
       </InfoBadge>
     </div>
   );
