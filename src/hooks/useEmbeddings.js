@@ -1,74 +1,90 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { itemText, rankItems, withTimeout } from '@/lib/search';
 
-function cosine(a, b) {
-  let dot = 0, na = 0, nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  return denom === 0 ? 0 : dot / denom;
-}
+export const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 
-// phase: 'idle' | 'loading' | 'embedding' | 'ready'
-export function useEmbeddings(items) {
+// 8-bit quantized weights (the ~23 MB model); the WASM default, pinned so a
+// library update can't silently switch to a larger download.
+export const MODEL_OPTIONS = { dtype: 'q8' };
+
+// A stalled download must end in an error the visitor can retry, not an
+// endless "Loading AI model…".
+export const MODEL_TIMEOUT_MS = 60_000;
+
+const EMBED_OPTIONS = { pooling: 'mean', normalize: true };
+
+/**
+ * Loads the embedding model in the browser and embeds the search items.
+ *
+ * phase: 'idle' | 'loading' | 'embedding' | 'ready' | 'error'
+ */
+export function useEmbeddings(items, { timeoutMs = MODEL_TIMEOUT_MS } = {}) {
   const [phase, setPhase] = useState('idle');
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [error, setError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
   const embeddingsRef = useRef(null);
   const pipelineRef = useRef(null);
 
   useEffect(() => {
-    if (!items || items.length === 0) return;
+    if (!items || items.length === 0) return undefined;
 
     let cancelled = false;
 
     async function init() {
       setPhase('loading');
+      setError(null);
+      embeddingsRef.current = null;
 
-      // Dynamic import keeps the ~23MB model out of the initial bundle
-      const { pipeline } = await import('@xenova/transformers');
-      if (cancelled) return;
-
-      pipelineRef.current = await pipeline(
-        'feature-extraction',
-        'Xenova/all-MiniLM-L6-v2'
-      );
-      if (cancelled) return;
-
-      setPhase('embedding');
-      setProgress({ done: 0, total: items.length });
-
-      const embeddings = [];
-      for (let i = 0; i < items.length; i++) {
+      try {
+        // Dynamic import keeps the library and the ~23 MB model out of the
+        // initial bundle; the model is fetched from the Hugging Face CDN.
+        const { pipeline } = await import('@huggingface/transformers');
         if (cancelled) return;
-        const text = items[i].title + (items[i].summary ? '. ' + items[i].summary : '');
-        const output = await pipelineRef.current(text, { pooling: 'mean', normalize: true });
-        embeddings.push(Array.from(output.data));
-        setProgress({ done: i + 1, total: items.length });
-      }
 
-      if (!cancelled) {
-        embeddingsRef.current = embeddings;
-        setPhase('ready');
+        pipelineRef.current = await withTimeout(
+          pipeline('feature-extraction', MODEL_ID, MODEL_OPTIONS),
+          timeoutMs,
+          'The AI model took too long to load.',
+        );
+        if (cancelled) return;
+
+        setPhase('embedding');
+        setProgress({ done: 0, total: items.length });
+
+        const embeddings = [];
+        for (let i = 0; i < items.length; i++) {
+          if (cancelled) return;
+          const output = await pipelineRef.current(itemText(items[i]), EMBED_OPTIONS);
+          embeddings.push(Array.from(output.data));
+          setProgress({ done: i + 1, total: items.length });
+        }
+
+        if (!cancelled) {
+          embeddingsRef.current = embeddings;
+          setPhase('ready');
+        }
+      } catch (err) {
+        if (cancelled) return;
+        pipelineRef.current = null;
+        setError(err?.message || 'The AI model could not be loaded.');
+        setPhase('error');
       }
     }
 
     init();
     return () => { cancelled = true; };
-  }, [items]);
+  }, [items, attempt, timeoutMs]);
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   async function search(query, topK = 5) {
     if (!embeddingsRef.current || !pipelineRef.current || !items) return [];
-    const output = await pipelineRef.current(query, { pooling: 'mean', normalize: true });
-    const qVec = Array.from(output.data);
-    return items
-      .map((item, i) => ({ ...item, score: cosine(qVec, embeddingsRef.current[i]) }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK);
+    const output = await pipelineRef.current(query, EMBED_OPTIONS);
+    return rankItems(Array.from(output.data), items, embeddingsRef.current, topK);
   }
 
-  return { phase, progress, search };
+  return { phase, progress, error, retry, search };
 }

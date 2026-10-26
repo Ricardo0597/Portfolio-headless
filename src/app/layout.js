@@ -5,6 +5,9 @@ import Nav from '@/components/Nav';
 export const metadata = {
   title: 'Tech Lab | Ricardo Contreras',
   description: 'Next.js headless layer — data served by Drupal JSON:API.',
+};
+
+export const viewport = {
   colorScheme: 'dark',
 };
 

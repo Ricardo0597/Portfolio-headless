@@ -5,9 +5,10 @@ import { usePortfolioData } from '@/hooks/usePortfolioData';
 import Constellation from '@/components/Constellation';
 import ConstellationPanel from '@/components/ConstellationPanel';
 import InfoBadge from '@/components/InfoBadge';
+import LoadError from '@/components/LoadError';
 
 export default function ConstellationPage() {
-  const { data, loading, error } = usePortfolioData();
+  const { data, loading, error, reload } = usePortfolioData();
   const [selectedNode, setSelectedNode] = useState(null);
 
   if (loading) {
@@ -19,11 +20,7 @@ export default function ConstellationPage() {
   }
 
   if (error) {
-    return (
-      <div style={{ padding: '2rem', color: '#ff4444' }}>
-        Error loading data: {typeof error === 'string' ? error : error?.message ?? 'Unknown error'}
-      </div>
-    );
+    return <LoadError message={error} onRetry={reload} />;
   }
 
   if (!data) return null;

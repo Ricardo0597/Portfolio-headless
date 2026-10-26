@@ -7,6 +7,7 @@ const phaseLabel = {
   loading: 'Loading AI model…',
   embedding: null, // rendered inline with progress
   ready: 'Ready — ask anything about my portfolio.',
+  error: null, // rendered with the error message and a retry button
 };
 
 const inputStyle = {
@@ -31,19 +32,45 @@ const btnStyle = {
   cursor: 'pointer',
 };
 
-export default function SearchBox({ phase, progress, search, statusOverride = undefined }) {
+const retryStyle = {
+  background: 'none',
+  border: '1px solid #ff4444',
+  color: '#ff4444',
+  padding: '0.2rem 0.6rem',
+  marginLeft: '0.6rem',
+  fontSize: '0.7rem',
+  fontFamily: 'JetBrains Mono, monospace',
+  cursor: 'pointer',
+};
+
+export default function SearchBox({
+  phase,
+  progress,
+  search,
+  error = null,
+  onRetry = undefined,
+  statusOverride = undefined,
+}) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [running, setRunning] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  const [searched, setSearched] = useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!query.trim() || phase !== 'ready' || running) return;
     setRunning(true);
     setResults([]);
-    const res = await search(query.trim());
-    setResults(res);
-    setRunning(false);
+    setSearchError(null);
+    try {
+      setResults(await search(query.trim()));
+      setSearched(true);
+    } catch (err) {
+      setSearchError(err?.message || 'Search failed.');
+    } finally {
+      setRunning(false);
+    }
   }
 
   const statusText = statusOverride
@@ -56,22 +83,44 @@ export default function SearchBox({ phase, progress, search, statusOverride = un
       <h1 style={{ fontSize: '2rem', color: '#00ff87', marginBottom: '0.4rem' }}>
         Ask My Portfolio
       </h1>
-      <p style={{ color: '#666', fontSize: '0.75rem', marginBottom: '2rem', minHeight: '1.2em' }}>
-        {statusText}
-      </p>
+      {phase === 'error' && statusOverride === undefined ? (
+        <p role="alert" style={{ color: '#ff4444', fontSize: '0.75rem', marginBottom: '2rem', minHeight: '1.2em' }}>
+          Search is unavailable: {error || 'the AI model could not be loaded.'}
+          {onRetry && (
+            <button type="button" onClick={onRetry} style={retryStyle}>
+              Try again
+            </button>
+          )}
+        </p>
+      ) : (
+        <p aria-live="polite" style={{ color: '#666', fontSize: '0.75rem', marginBottom: '2rem', minHeight: '1.2em' }}>
+          {statusText}
+        </p>
+      )}
 
       <form onSubmit={handleSubmit} style={{ display: 'flex', gap: 0 }}>
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder={phase === 'ready' ? 'What have you built with PHP?' : 'Loading…'}
+          placeholder={phase === 'ready' ? 'What have you built with PHP?' : (phase === 'error' ? 'Unavailable' : 'Loading…')}
           disabled={phase !== 'ready'}
+          aria-label="Search question"
           style={inputStyle}
         />
         <button type="submit" disabled={phase !== 'ready' || running} style={btnStyle}>
           {running ? '…' : 'Search'}
         </button>
       </form>
+
+      {searchError && (
+        <p role="alert" style={{ color: '#ff4444', fontSize: '0.75rem', marginTop: '1rem' }}>
+          Search failed: {searchError}
+        </p>
+      )}
+
+      {searched && !running && !searchError && results.length === 0 && (
+        <p style={{ color: '#666', fontSize: '0.75rem', marginTop: '1rem' }}>No matches.</p>
+      )}
 
       {results.length > 0 && (
         <ul style={{ listStyle: 'none', padding: 0, marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
