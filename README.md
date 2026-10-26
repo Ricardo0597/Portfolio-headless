@@ -103,9 +103,13 @@ host.
 ### On its own
 
 ```bash
-npm install
+ONNXRUNTIME_NODE_INSTALL=skip npm install
 npm run dev       # http://localhost:3000/headless
 ```
+
+`ONNXRUNTIME_NODE_INSTALL=skip` stops `onnxruntime-node`, a server-side dependency of transformers.js, from downloading
+CUDA binaries from NuGet on Linux x64. This app runs ONNX only in the browser (`onnxruntime-web`), and webpack aliases the
+Node package away. CI and the DDEV container set the same variable.
 
 Without Drupal on the same origin, the JSON:API requests fail, and the pages show the error with a retry button. This is
 expected, and useful for checking the failure states.

@@ -15,6 +15,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Tests: `npm test` (Vitest + Testing Library + jsdom). Mock `@huggingface/transformers`; tests must never
   download the model or call Drupal.
 - Before committing: `npm test`, `npm run build` and `npm audit --omit=dev` must be clean.
+- Install with `ONNXRUNTIME_NODE_INSTALL=skip` (CI and DDEV set it): the app never loads
+  `onnxruntime-node`, and its postinstall would download CUDA binaries from NuGet.
 - Pin new dependencies to exact versions. The dev server also runs in DDEV's `nodejs` container (Node 20), so test
   tooling must support Node 20.
 - Commits follow Conventional Commits; no `Co-Authored-By` trailers.

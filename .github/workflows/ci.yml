@@ -26,6 +26,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        # onnxruntime-node (a server-side dependency of transformers.js that this
+        # browser-only app never loads) would download CUDA binaries from NuGet.
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
         run: npm ci --no-audit --no-fund
 
       - name: Security audit (production dependencies)
