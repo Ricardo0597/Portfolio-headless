@@ -160,3 +160,9 @@ src/
 | First visit | Search downloads about 23 MB of model files from a third-party CDN (Hugging Face) before it can answer |
 | Rendering | All pages are client-side rendered; there is no static or server rendering of Drupal content |
 | End-to-end tests | The Drupal repo's Playwright suite does not cover `/headless` yet |
+
+## License
+
+The code is licensed under the [GNU General Public License v2.0 or later](LICENSE), the same as the
+[Drupal portfolio](https://github.com/Ricardo0597/portfolio). The content it displays (projects, skills, profile data)
+comes from that site and is not covered by this license.
